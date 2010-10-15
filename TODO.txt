@@ -1,0 +1,2 @@
++ Damaged working copies are going to be a problem, need a big hammer of a fallback, something like:
+  (Do cleanup, check the status for problems, if there are problems start from scratch.)

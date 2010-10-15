@@ -54,7 +54,9 @@ public class BuildAgent {
       // TODO(knorton): Read the Channel with a timeout ... or maybe without a
       // timeout since we really can't do anything but queue more Tasks. On the
       // other hand, if we get every Bee calling us back at once, we don't want
-      // to query for more revisions too fast. The right solution is going to be to block on read, handle the message when it arrives and decide if it's ok for us to check up on revisions.
+      // to query for more revisions too fast. The right solution is going to be
+      // to block on read, handle the message when it arrives and decide if it's
+      // ok for us to check up on revisions.
       Thread.sleep(10000);
     }
   }

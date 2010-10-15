@@ -40,8 +40,9 @@ public class WorkingCopy {
       return;
     }
 
-    // If we are starting with an existing WC, we start with a preventative
-    // cleanup.
+    // TODO(knorton): A cleanup is just not enough. We need to check status
+    // after cleanup and if the working copy looks tainted delete the whole
+    // fucking thing and start over.
     if (!m_isClean) {
       m_manager.getWCClient().doCleanup(m_directory);
       m_isClean = true;

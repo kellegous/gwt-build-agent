@@ -1,5 +1,6 @@
 package goog;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -99,9 +100,13 @@ public class WorkerBee implements Runnable {
     new Thread(new Runnable() {
       @Override
       public void run() {
+        final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         try {
           final byte[] data = new byte[1024];
-          while (stream.read(data) >= 0);
+          int n = 0;
+          while ((n = stream.read(data)) >= 0)
+            buffer.write(data, 0, n);
+          System.out.println(new String(buffer.toByteArray()));
         } catch (IOException e) {
           // Ignore these because we're only draining.
         }
