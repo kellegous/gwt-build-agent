@@ -47,4 +47,15 @@ public class Archive {
       m_revisions = load();
     return m_revisions;
   }
+
+  private static String nameFor(long revision) {
+    final StringBuilder buffer = new StringBuilder(Long.toString(revision));
+    while (buffer.length() < 6)
+      buffer.insert(0, '0');
+    return buffer.toString();
+  }
+
+  public File directoryFor(long revision) {
+    return new File(m_directory, nameFor(revision));
+  }
 }

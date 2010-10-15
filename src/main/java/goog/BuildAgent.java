@@ -5,8 +5,11 @@ import org.tmatesoft.svn.core.SVNLogEntry;
 import org.tmatesoft.svn.core.internal.io.dav.DAVRepositoryFactory;
 
 import java.io.File;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+
+import goog.WorkerBee.TaskResponse;
 
 public class BuildAgent {
   private static final File WORKING = new File("working");
@@ -28,36 +31,54 @@ public class BuildAgent {
     return channel;
   }
 
-  public static void main(String[] args) throws SVNException, InterruptedException {
-    DAVRepositoryFactory.setup();
+  private boolean handleMessage(WorkerBee.Message message) {
+    if (message instanceof WorkerBee.TaskResponse) {
+      final WorkerBee.TaskResponse response = (TaskResponse)message;
+      System.out.println("WorkerBee has completed task " + response.request().branch().path() + " @r" + response.request().revision());
+      m_outstanding.remove(response.request());
+      return false;
+    }
 
+    return true;
+  }
+
+  private void run() throws SVNException, InterruptedException {
     // TODO(knorton): Multi-branch support will require an archive for each
     // branch.
 
     // We are only looking at trunk right now.
     final Branch branch = new Branch("trunk", "/trunk", 9022);
-    final Archive archive = Archive.create("archive");
+    final Archive archive = Archive.create("archive/trunk");
 
     // Setup a working copy of /tools.
     final WorkingCopy tools = new WorkingCopy(new File("working/tools"));
 
     final Repo trunk = new Repo(branch);
-    final WorkerBee.MessageQueue channel = letLoseTheBees(2);
+    final WorkerBee.MessageQueue channel = letLoseTheBees(1);
 
     while (true) {
       tools.checkout("/tools");
       final List<Long> revisions = unhandledRevisions(trunk.newRevisions(), archive.revisions());
       System.out.println(revisions.size() + " unhandled revisions.");
-      for (Long revision : revisions)
-        channel.send(new WorkerBee.TaskRequest(branch, revision));
+      for (Long revision : revisions) {
+        final WorkerBee.TaskRequest request = new WorkerBee.TaskRequest(branch, revision, archive.directoryFor(revision));
+        m_outstanding.add(request);
+        channel.send(request);
+      }
 
-      // TODO(knorton): Read the Channel with a timeout ... or maybe without a
-      // timeout since we really can't do anything but queue more Tasks. On the
-      // other hand, if we get every Bee calling us back at once, we don't want
-      // to query for more revisions too fast. The right solution is going to be
-      // to block on read, handle the message when it arrives and decide if it's
-      // ok for us to check up on revisions.
-      Thread.sleep(10000);
+      if (!handleMessage(channel.receive()))
+        return;
     }
+  }
+
+  public static void main(String[] args) throws SVNException, InterruptedException {
+    DAVRepositoryFactory.setup();
+    new BuildAgent().run();
+  }
+
+  private final HashSet<WorkerBee.TaskRequest> m_outstanding = new HashSet<WorkerBee.TaskRequest>();
+
+  private BuildAgent() {
+
   }
 }

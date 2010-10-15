@@ -1,9 +1,12 @@
 package goog;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public class WorkerBee implements Runnable {
@@ -73,10 +76,12 @@ public class WorkerBee implements Runnable {
   public static class TaskRequest implements Message {
     private final Branch m_branch;
     private final long m_revision;
+    private final File m_destination;
 
-    public TaskRequest(Branch branch, long revision) {
+    public TaskRequest(Branch branch, long revision, File destination) {
       m_branch = branch;
       m_revision = revision;
+      m_destination = destination;
     }
 
     public Branch branch() {
@@ -85,6 +90,10 @@ public class WorkerBee implements Runnable {
 
     public long revision() {
       return m_revision;
+    }
+
+    public File destination() {
+      return m_destination;
     }
   }
 
@@ -96,51 +105,84 @@ public class WorkerBee implements Runnable {
     m_workingCopy = new WorkingCopy(directory);
   }
 
-  private void drain(final InputStream stream) {
+  private void streamTo(final InputStream stream, File file) throws FileNotFoundException {
+    final FileOutputStream out = new FileOutputStream(file);
     new Thread(new Runnable() {
       @Override
       public void run() {
-        final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         try {
           final byte[] data = new byte[1024];
           int n = 0;
           while ((n = stream.read(data)) >= 0)
-            buffer.write(data, 0, n);
-          System.out.println(new String(buffer.toByteArray()));
+            out.write(data, 0, n);
         } catch (IOException e) {
-          // Ignore these because we're only draining.
+        } finally {
+          try {
+            out.close();
+          } catch (IOException e) {
+          }
         }
       }
     }).start();
   }
 
-  private boolean build() throws IOException, InterruptedException {
+  private static void copyDirectory(File sourceLocation, File targetLocation) throws IOException {
+    if (sourceLocation.isDirectory()) {
+      if (!targetLocation.exists()) {
+        targetLocation.mkdir();
+      }
+
+      String[] children = sourceLocation.list();
+      for (int i = 0; i < children.length; i++) {
+        copyDirectory(new File(sourceLocation, children[i]), new File(targetLocation, children[i]));
+      }
+    } else {
+      InputStream in = new FileInputStream(sourceLocation);
+      OutputStream out = new FileOutputStream(targetLocation);
+
+      // Copy the bits from instream to outstream
+      byte[] buf = new byte[1024];
+      int len;
+      while ((len = in.read(buf)) > 0) {
+        out.write(buf, 0, len);
+      }
+      in.close();
+      out.close();
+    }
+  }
+
+  private boolean build(File destination) throws IOException, InterruptedException {
     // TODO(knorton): Where is ant? Assume it is on the PATH.
-    final Process process = new ProcessBuilder("ant", "dist").directory(m_workingCopy.directory()).redirectErrorStream(true).start();
-
-    // TODO(knorton): We will completely disreguard stdin/stdout at this point,
-    // but eventually write it into the artifacts directory.
-    drain(process.getInputStream());
-
-    return process.waitFor() == 0;
+    final Process process = new ProcessBuilder("ant", "clean", "dist").directory(m_workingCopy.directory()).start();
+    streamTo(process.getInputStream(), new File(destination, "stdout.txt"));
+    streamTo(process.getErrorStream(), new File(destination, "stderr.txt"));
+    final boolean success = process.waitFor() == 0;
+    if (success)
+      copyDirectory(new File(m_workingCopy.directory(), "build/dist"), destination);
+    return success;
   }
 
   private void handleTaskRequest(TaskRequest request) {
     final Branch branch = request.branch();
     final long revision = request.revision();
+    final File destination = request.destination();
     try {
       System.out.println("Starting task " + branch.name() + " @r" + revision);
       // Update the working copy.
       m_workingCopy.checkout(branch.path(), revision);
 
-      // Run ant dist.
-      final boolean success = build();
+      if (!destination.exists())
+        destination.mkdirs();
 
-      // Move results into archive directory.
+      // Run ant dist.
+      if (!build(destination)) {
+        m_channel.send(new TaskResponse(request, false));
+        return;
+      }
 
       // Send message back to agent.
       System.out.println("Finishing task " + branch.name() + " @r" + revision);
-      m_channel.send(new TaskResponse(request, success));
+      m_channel.send(new TaskResponse(request, true));
     } catch (Exception e) {
       // TODO(knorton): Send error to agent. The weird thing about these is that
       // they many not indicate that the build is busted, so we need to make
