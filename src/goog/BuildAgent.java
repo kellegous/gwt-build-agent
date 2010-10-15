@@ -31,24 +31,30 @@ public class BuildAgent {
   public static void main(String[] args) throws SVNException, InterruptedException {
     DAVRepositoryFactory.setup();
 
+    // TODO(knorton): Multi-branch support will require an archive for each
+    // branch.
+
     // We are only looking at trunk right now.
     final Branch branch = new Branch("trunk", "/trunk", 9022);
     final Archive archive = Archive.create("archive");
 
-    // Checkout /tools.
+    // Setup a working copy of /tools.
     final WorkingCopy tools = new WorkingCopy(new File("working/tools"));
-    tools.checkout("/tools");
 
     final Repo trunk = new Repo(branch);
     final WorkerBee.MessageQueue channel = letLoseTheBees(2);
 
     while (true) {
-      tools.update();
+      tools.checkout("/tools");
       final List<Long> revisions = unhandledRevisions(trunk.newRevisions(), archive.revisions());
       System.out.println(revisions.size() + " unhandled revisions.");
       for (Long revision : revisions)
-        channel.send(new WorkerBee.TaskMessage(branch, revision));
+        channel.send(new WorkerBee.TaskRequest(branch, revision));
 
+      // TODO(knorton): Read the Channel with a timeout ... or maybe without a
+      // timeout since we really can't do anything but queue more Tasks. On the
+      // other hand, if we get every Bee calling us back at once, we don't want
+      // to query for more revisions too fast. The right solution is going to be to block on read, handle the message when it arrives and decide if it's ok for us to check up on revisions.
       Thread.sleep(10000);
     }
   }

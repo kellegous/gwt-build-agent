@@ -12,7 +12,10 @@ import java.io.File;
 
 public class WorkingCopy {
   private final File m_directory;
+
   private final SVNClientManager m_manager = SVNClientManager.newInstance(SVNWCUtil.createDefaultOptions(false));
+
+  private boolean m_isClean;
 
   public WorkingCopy(File directory) {
     m_directory = directory;
@@ -37,6 +40,13 @@ public class WorkingCopy {
       return;
     }
 
+    // If we are starting with an existing WC, we start with a preventative
+    // cleanup.
+    if (!m_isClean) {
+      m_manager.getWCClient().doCleanup(m_directory);
+      m_isClean = true;
+    }
+
     final SVNInfo info = m_manager.getWCClient().doInfo(m_directory, SVNRevision.WORKING);
     if (info.getURL().equals(url)) {
       m_manager.getUpdateClient().doUpdate(m_directory, revision, SVNDepth.UNKNOWN, false, false);
@@ -46,11 +56,7 @@ public class WorkingCopy {
     m_manager.getUpdateClient().doSwitch(m_directory, url, revision, revision, SVNDepth.UNKNOWN, false, false);
   }
 
-  public void update(SVNRevision revision) throws SVNException {
-    m_manager.getUpdateClient().doUpdate(m_directory, revision, SVNDepth.UNKNOWN, false, false);
-  }
-
-  public void update() throws SVNException {
-    update(SVNRevision.HEAD);
+  public File directory() {
+    return m_directory;
   }
 }
