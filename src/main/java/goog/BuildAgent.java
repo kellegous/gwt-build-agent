@@ -15,7 +15,7 @@ import goog.WorkerBee.TaskResponse;
 
 public class BuildAgent {
   private static final File WORKING = new File("working");
-  private static final int MAX_WORKERS = 12;
+  private static final int MAX_WORKERS = 8;
 
   private Set<Long> revisionsInProgress() {
     final HashSet<Long> revisions = new HashSet<Long>();
@@ -79,12 +79,18 @@ public class BuildAgent {
     final Repo trunk = new Repo(branch);
 
     while (true) {
-      tools.checkout("/tools");
-      final List<Long> revisions = revisionsToBuild(trunk.newRevisions(), m_archive.revisions(), revisionsInProgress());
-      System.out.println(revisions.size() + " unhandled revisions.");
-      for (Long revision : revisions)
-        startTask(new WorkerBee.TaskRequest(branch, revision, m_archive.directoryFor(revision)));
-      handleMessage(m_channel.receive());
+      try {
+        tools.checkout("/tools");
+        final List<Long> revisions = revisionsToBuild(trunk.newRevisions(), m_archive.revisions(), revisionsInProgress());
+        System.out.println(revisions.size() + " unhandled revisions.");
+        for (Long revision : revisions)
+          startTask(new WorkerBee.TaskRequest(branch, revision, m_archive.directoryFor(revision)));
+        handleMessage(m_channel.receive());
+      } catch (SVNException e) {
+        // If googlecode craps out like it often does, just sleep a minute and
+        // pick up where we left off.
+        Thread.sleep(60 * 1000);
+      }
     }
   }
 
