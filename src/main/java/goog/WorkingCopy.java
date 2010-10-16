@@ -8,6 +8,7 @@ import org.tmatesoft.svn.core.wc.SVNClientManager;
 import org.tmatesoft.svn.core.wc.SVNInfo;
 import org.tmatesoft.svn.core.wc.SVNRevision;
 import org.tmatesoft.svn.core.wc.SVNStatus;
+import org.tmatesoft.svn.core.wc.SVNStatusType;
 import org.tmatesoft.svn.core.wc.SVNWCClient;
 import org.tmatesoft.svn.core.wc.SVNWCUtil;
 
@@ -45,7 +46,8 @@ public class WorkingCopy {
     m_manager.getStatusClient().doStatus(directory, SVNRevision.WORKING, SVNDepth.UNKNOWN, false, false, false, false, new ISVNStatusHandler() {
       @Override
       public void handleStatus(SVNStatus status) throws SVNException {
-        delete(status.getFile());
+        if (status.getContentsStatus() == SVNStatusType.STATUS_UNVERSIONED)
+          delete(status.getFile());
       }
     }, null);
   }
