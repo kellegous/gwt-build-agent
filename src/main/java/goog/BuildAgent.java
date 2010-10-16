@@ -5,6 +5,7 @@ import org.tmatesoft.svn.core.SVNLogEntry;
 import org.tmatesoft.svn.core.internal.io.dav.DAVRepositoryFactory;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -14,6 +15,7 @@ import goog.WorkerBee.TaskResponse;
 
 public class BuildAgent {
   private static final File WORKING = new File("working");
+  private static final int MAX_WORKERS = 2;
 
   private Set<Long> revisionsInProgress() {
     final HashSet<Long> revisions = new HashSet<Long>();
@@ -24,7 +26,7 @@ public class BuildAgent {
 
   private static List<Long> revisionsToBuild(List<SVNLogEntry> log, Set<Long> inArchive, Set<Long> inProgress) {
     final List<Long> revisions = new LinkedList<Long>();
-    for (int i = log.size() - 1; i <= 0; --i) {
+    for (int i = log.size() - 1; i >= 0; --i) {
       final long rev = log.get(i).getRevision();
       if (!inArchive.contains(rev) && !inProgress.contains(rev))
         revisions.add(rev);
@@ -32,63 +34,67 @@ public class BuildAgent {
     return revisions;
   }
 
-  private static WorkerBee.MessageQueue letLoseTheBees(int n) {
-    final WorkerBee.Channel channel = new WorkerBee.Channel();
-    for (int i = 0; i < n; ++i) {
-      final File directory = new File(WORKING, "bee-" + i);
-      new Thread(new WorkerBee(directory, channel)).start();
-    }
-    return channel;
-  }
-
-  private boolean handleMessage(WorkerBee.Message message) {
+  private void handleMessage(WorkerBee.Message message) throws IOException {
     if (message instanceof WorkerBee.TaskResponse) {
-      final WorkerBee.TaskResponse response = (TaskResponse)message;
-      System.out.println("WorkerBee has completed task " + response.request().branch().path() + " @r" + response.request().revision());
-      m_inProgress.remove(response.request());
-      return false;
+      completeTask((TaskResponse)message);
+      return;
     }
 
-    return true;
+    if (message instanceof WorkerBee.QuitResponse) {
+      m_numBees--;
+      return;
+    }
   }
 
-  private void run() throws SVNException, InterruptedException {
+  private void completeTask(WorkerBee.TaskResponse response) throws IOException {
+    final WorkerBee.TaskRequest request = response.request();
+    m_inProgress.remove(request);
+    m_archive.commit(response.request().revision());
+  }
+
+  private void startTask(WorkerBee.TaskRequest request) {
+    m_inProgress.add(request);
+    if (m_numBees == 0 || (m_channel.backlog() > 0 && m_numBees < MAX_WORKERS))
+      new Thread(new WorkerBee(new File(WORKING, "bee-" + (m_numBees++)), m_channel)).start();
+    m_channel.send(request);
+  }
+
+  private void run() throws SVNException, InterruptedException, IOException {
     // TODO(knorton): Multi-branch support will require an archive for each
     // branch.
 
     // We are only looking at trunk right now.
     final Branch branch = new Branch("trunk", "/trunk", 9022);
-    final Archive archive = Archive.create("archive/trunk");
 
     // Setup a working copy of /tools.
     final WorkingCopy tools = new WorkingCopy(new File("working/tools"));
 
     final Repo trunk = new Repo(branch);
-    final WorkerBee.MessageQueue channel = letLoseTheBees(1);
 
     while (true) {
       tools.checkout("/tools");
-      final List<Long> revisions = revisionsToBuild(trunk.newRevisions(), archive.revisions(), revisionsInProgress());
+      final List<Long> revisions = revisionsToBuild(trunk.newRevisions(), m_archive.revisions(), revisionsInProgress());
       System.out.println(revisions.size() + " unhandled revisions.");
-      for (Long revision : revisions) {
-        final WorkerBee.TaskRequest request = new WorkerBee.TaskRequest(branch, revision, archive.directoryFor(revision));
-        m_inProgress.add(request);
-        channel.send(request);
-      }
+      for (Long revision : revisions)
+        startTask(new WorkerBee.TaskRequest(branch, revision, m_archive.directoryFor(revision)));
 
-      if (!handleMessage(channel.receive()))
-        return;
+      handleMessage(m_channel.receive());
     }
   }
 
-  public static void main(String[] args) throws SVNException, InterruptedException {
+  public static void main(String[] args) throws SVNException, InterruptedException, IOException {
     DAVRepositoryFactory.setup();
     new BuildAgent().run();
   }
 
+  private final Archive m_archive = Archive.create("archive/trunk");
+
   private final HashSet<WorkerBee.TaskRequest> m_inProgress = new HashSet<WorkerBee.TaskRequest>();
 
-  private BuildAgent() {
+  private final WorkerBee.Channel m_channel = new WorkerBee.Channel();
 
+  private int m_numBees;
+
+  private BuildAgent() {
   }
 }

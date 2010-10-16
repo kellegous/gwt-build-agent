@@ -20,6 +20,10 @@ public class WorkerBee implements Runnable {
     private final LinkedBlockingQueue<Message> m_toBees = new LinkedBlockingQueue<WorkerBee.Message>();
     private final LinkedBlockingQueue<Message> m_frBees = new LinkedBlockingQueue<WorkerBee.Message>();
 
+    public int backlog() {
+      return m_toBees.size();
+    }
+
     @Override
     public Message receive() throws InterruptedException {
       return m_frBees.take();
@@ -167,7 +171,6 @@ public class WorkerBee implements Runnable {
     final long revision = request.revision();
     final File destination = request.destination();
     try {
-      System.out.println("Starting task " + branch.name() + " @r" + revision);
       // Update the working copy.
       m_workingCopy.checkout(branch.path(), revision);
 
@@ -181,7 +184,6 @@ public class WorkerBee implements Runnable {
       }
 
       // Send message back to agent.
-      System.out.println("Finishing task " + branch.name() + " @r" + revision);
       m_channel.send(new TaskResponse(request, true));
     } catch (Exception e) {
       // TODO(knorton): Send error to agent. The weird thing about these is that
