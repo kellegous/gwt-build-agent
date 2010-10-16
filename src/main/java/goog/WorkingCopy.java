@@ -3,9 +3,12 @@ package goog;
 import org.tmatesoft.svn.core.SVNDepth;
 import org.tmatesoft.svn.core.SVNException;
 import org.tmatesoft.svn.core.SVNURL;
+import org.tmatesoft.svn.core.wc.ISVNStatusHandler;
 import org.tmatesoft.svn.core.wc.SVNClientManager;
 import org.tmatesoft.svn.core.wc.SVNInfo;
 import org.tmatesoft.svn.core.wc.SVNRevision;
+import org.tmatesoft.svn.core.wc.SVNStatus;
+import org.tmatesoft.svn.core.wc.SVNWCClient;
 import org.tmatesoft.svn.core.wc.SVNWCUtil;
 
 import java.io.File;
@@ -14,8 +17,6 @@ public class WorkingCopy {
   private final File m_directory;
 
   private final SVNClientManager m_manager = SVNClientManager.newInstance(SVNWCUtil.createDefaultOptions(false));
-
-  private boolean m_isClean;
 
   public WorkingCopy(File directory) {
     m_directory = directory;
@@ -29,6 +30,26 @@ public class WorkingCopy {
     doCheckout(path, SVNRevision.create(revision));
   }
 
+  private static void delete(File file) {
+    if (file.isDirectory()) {
+      for (File f : file.listFiles())
+        delete(f);
+    }
+    file.delete();
+  }
+
+  private void doCleansing(File directory) throws SVNException {
+    final SVNWCClient wcClient = m_manager.getWCClient();
+    wcClient.doCleanup(directory);
+
+    m_manager.getStatusClient().doStatus(directory, SVNRevision.WORKING, SVNDepth.UNKNOWN, false, false, false, false, new ISVNStatusHandler() {
+      @Override
+      public void handleStatus(SVNStatus status) throws SVNException {
+        delete(status.getFile());
+      }
+    }, null);
+  }
+
   private void doCheckout(String path, SVNRevision revision) throws SVNException {
     final SVNURL url = GwtSvn.svnUrlFor(path);
 
@@ -40,14 +61,7 @@ public class WorkingCopy {
       return;
     }
 
-    // TODO(knorton): A cleanup is just not enough. We need to check status
-    // after cleanup and if the working copy looks tainted delete the whole
-    // fucking thing and start over.
-    if (!m_isClean) {
-      m_manager.getWCClient().doCleanup(m_directory);
-      m_isClean = true;
-    }
-
+    doCleansing(m_directory);
     final SVNInfo info = m_manager.getWCClient().doInfo(m_directory, SVNRevision.WORKING);
     if (info.getURL().equals(url)) {
       m_manager.getUpdateClient().doUpdate(m_directory, revision, SVNDepth.UNKNOWN, false, false);
