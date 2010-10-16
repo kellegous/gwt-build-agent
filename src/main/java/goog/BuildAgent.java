@@ -15,7 +15,7 @@ import goog.WorkerBee.TaskResponse;
 
 public class BuildAgent {
   private static final File WORKING = new File("working");
-  private static final int MAX_WORKERS = 2;
+  private static final int MAX_WORKERS = 12;
 
   private Set<Long> revisionsInProgress() {
     final HashSet<Long> revisions = new HashSet<Long>();
@@ -44,6 +44,14 @@ public class BuildAgent {
       m_numBees--;
       return;
     }
+
+    if (message instanceof WorkerBee.TaskException) {
+      final WorkerBee.TaskException ex = (WorkerBee.TaskException)message;
+      m_inProgress.remove(ex.request());
+      System.err.println("Exception on r" + ex.request().revision());
+      ex.exception().printStackTrace(System.err);
+      return;
+    }
   }
 
   private void completeTask(WorkerBee.TaskResponse response) throws IOException {
@@ -60,11 +68,10 @@ public class BuildAgent {
   }
 
   private void run() throws SVNException, InterruptedException, IOException {
-    // TODO(knorton): Multi-branch support will require an archive for each
-    // branch.
+    // TODO(knorton): Multi-branch support.
 
     // We are only looking at trunk right now.
-    final Branch branch = new Branch("trunk", "/trunk", 9022);
+    final Branch branch = new Branch("trunk", "/trunk", 6000);
 
     // Setup a working copy of /tools.
     final WorkingCopy tools = new WorkingCopy(new File("working/tools"));
@@ -75,9 +82,9 @@ public class BuildAgent {
       tools.checkout("/tools");
       final List<Long> revisions = revisionsToBuild(trunk.newRevisions(), m_archive.revisions(), revisionsInProgress());
       System.out.println(revisions.size() + " unhandled revisions.");
+      System.exit(0);
       for (Long revision : revisions)
         startTask(new WorkerBee.TaskRequest(branch, revision, m_archive.directoryFor(revision)));
-
       handleMessage(m_channel.receive());
     }
   }

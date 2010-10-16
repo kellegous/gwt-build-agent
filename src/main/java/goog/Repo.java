@@ -20,11 +20,10 @@ public class Repo {
     m_branch = branch;
     lastRevision = branch.startRevision();
   }
-  
+
   public List<SVNLogEntry> newRevisions() throws SVNException {
     final List<SVNLogEntry> entries = new ArrayList<SVNLogEntry>();
-    // TODO(knorton): Make limit-less instead of 1,000.
-    m_manager.getLogClient().doLog(GwtSvn.svnUrlFor(m_branch.path()), new String[] {""}, SVNRevision.create(lastRevision), SVNRevision.create(lastRevision), SVNRevision.HEAD, true, false, 1000,
+    m_manager.getLogClient().doLog(GwtSvn.svnUrlFor(m_branch.path()), new String[] {""}, SVNRevision.create(lastRevision), SVNRevision.create(lastRevision), SVNRevision.HEAD, true, false, -1,
         new ISVNLogEntryHandler() {
           @Override
           public void handleLogEntry(SVNLogEntry e) throws SVNException {

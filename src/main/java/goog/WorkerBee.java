@@ -77,6 +77,24 @@ public class WorkerBee implements Runnable {
     }
   }
 
+  public static class TaskException implements Message {
+    private final TaskRequest m_request;
+    private final Throwable m_exception;
+
+    public TaskException(TaskRequest request, Throwable exception) {
+      m_request = request;
+      m_exception = exception;
+    }
+
+    public Throwable exception() {
+      return m_exception;
+    }
+
+    public TaskRequest request() {
+      return m_request;
+    }
+  }
+
   public static class TaskRequest implements Message {
     private final Branch m_branch;
     private final long m_revision;
@@ -189,8 +207,7 @@ public class WorkerBee implements Runnable {
       // TODO(knorton): Send error to agent. The weird thing about these is that
       // they many not indicate that the build is busted, so we need to make
       // this kind of a special condition.
-      e.printStackTrace();
-      m_channel.send(new TaskResponse(request, false));
+      m_channel.send(new TaskException(request, e));
     }
   }
 
