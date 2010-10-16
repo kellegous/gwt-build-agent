@@ -8,17 +8,27 @@ import java.io.File;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 
 import goog.WorkerBee.TaskResponse;
 
 public class BuildAgent {
   private static final File WORKING = new File("working");
 
-  private static List<Long> unhandledRevisions(List<SVNLogEntry> log, List<Long> fromArchive) {
-    // TODO(knorton): Actually return the right list of revisions.
+  private Set<Long> revisionsInProgress() {
+    final HashSet<Long> revisions = new HashSet<Long>();
+    for (WorkerBee.TaskRequest req : m_inProgress)
+      revisions.add(req.revision());
+    return revisions;
+  }
+
+  private static List<Long> revisionsToBuild(List<SVNLogEntry> log, Set<Long> inArchive, Set<Long> inProgress) {
     final List<Long> revisions = new LinkedList<Long>();
-    for (SVNLogEntry e : log)
-      revisions.add(e.getRevision());
+    for (int i = log.size() - 1; i <= 0; --i) {
+      final long rev = log.get(i).getRevision();
+      if (!inArchive.contains(rev) && !inProgress.contains(rev))
+        revisions.add(rev);
+    }
     return revisions;
   }
 
@@ -35,7 +45,7 @@ public class BuildAgent {
     if (message instanceof WorkerBee.TaskResponse) {
       final WorkerBee.TaskResponse response = (TaskResponse)message;
       System.out.println("WorkerBee has completed task " + response.request().branch().path() + " @r" + response.request().revision());
-      m_outstanding.remove(response.request());
+      m_inProgress.remove(response.request());
       return false;
     }
 
@@ -58,11 +68,11 @@ public class BuildAgent {
 
     while (true) {
       tools.checkout("/tools");
-      final List<Long> revisions = unhandledRevisions(trunk.newRevisions(), archive.revisions());
+      final List<Long> revisions = revisionsToBuild(trunk.newRevisions(), archive.revisions(), revisionsInProgress());
       System.out.println(revisions.size() + " unhandled revisions.");
       for (Long revision : revisions) {
         final WorkerBee.TaskRequest request = new WorkerBee.TaskRequest(branch, revision, archive.directoryFor(revision));
-        m_outstanding.add(request);
+        m_inProgress.add(request);
         channel.send(request);
       }
 
@@ -76,7 +86,7 @@ public class BuildAgent {
     new BuildAgent().run();
   }
 
-  private final HashSet<WorkerBee.TaskRequest> m_outstanding = new HashSet<WorkerBee.TaskRequest>();
+  private final HashSet<WorkerBee.TaskRequest> m_inProgress = new HashSet<WorkerBee.TaskRequest>();
 
   private BuildAgent() {
 
