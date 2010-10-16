@@ -82,7 +82,6 @@ public class BuildAgent {
       tools.checkout("/tools");
       final List<Long> revisions = revisionsToBuild(trunk.newRevisions(), m_archive.revisions(), revisionsInProgress());
       System.out.println(revisions.size() + " unhandled revisions.");
-      System.exit(0);
       for (Long revision : revisions)
         startTask(new WorkerBee.TaskRequest(branch, revision, m_archive.directoryFor(revision)));
       handleMessage(m_channel.receive());
