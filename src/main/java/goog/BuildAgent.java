@@ -98,7 +98,7 @@ public class BuildAgent {
       try {
         tools.checkout("/tools");
         final List<Long> revisions = revisionsToBuild(trunk.newRevisions(), m_archive.revisions(), revisionsInProgress());
-        System.out.println(revisions.size() + " unhandled revisions.");
+        System.out.println("backlog: " + m_channel.backlog() + " revisions, adding " + revisions.size() + " more.");
         for (Long revision : revisions)
           startTask(new WorkerBee.TaskRequest(branch, revision, m_archive.directoryFor(revision)));
         dispatchMessages();
