@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 public class WorkerBee implements Runnable {
   public interface MessageQueue {
@@ -27,6 +28,10 @@ public class WorkerBee implements Runnable {
     @Override
     public Message receive() throws InterruptedException {
       return m_frBees.take();
+    }
+
+    public Message receive(int timeout) throws InterruptedException {
+      return m_frBees.poll(timeout, TimeUnit.MILLISECONDS);
     }
 
     @Override

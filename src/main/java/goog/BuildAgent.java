@@ -34,6 +34,17 @@ public class BuildAgent {
     return revisions;
   }
 
+  private static final int POLLING_INTERVAL = 5 * 60 * 1000; // 5 minute
+
+  private void dispatchMessages() throws IOException, InterruptedException {
+    final long startAt = System.currentTimeMillis();
+    while (true) {
+      handleMessage(m_channel.receive(POLLING_INTERVAL));
+      if (System.currentTimeMillis() - startAt > POLLING_INTERVAL)
+        return;
+    }
+  }
+
   private void handleMessage(WorkerBee.Message message) throws IOException {
     if (message instanceof WorkerBee.TaskResponse) {
       completeTask((TaskResponse)message);
@@ -42,6 +53,7 @@ public class BuildAgent {
 
     if (message instanceof WorkerBee.QuitResponse) {
       m_numBees--;
+      System.out.println("A WorkerBee has been shutdown, we now have " + m_numBees + " bees.");
       return;
     }
 
@@ -58,6 +70,10 @@ public class BuildAgent {
     final WorkerBee.TaskRequest request = response.request();
     m_inProgress.remove(request);
     m_archive.commit(response.request().revision());
+
+    // If there are no pending messages, we can dismiss this worker for now.
+    if (m_channel.backlog() == 0)
+      m_channel.send(new WorkerBee.QuitRequest());
   }
 
   private void startTask(WorkerBee.TaskRequest request) {
@@ -85,7 +101,7 @@ public class BuildAgent {
         System.out.println(revisions.size() + " unhandled revisions.");
         for (Long revision : revisions)
           startTask(new WorkerBee.TaskRequest(branch, revision, m_archive.directoryFor(revision)));
-        handleMessage(m_channel.receive());
+        dispatchMessages();
       } catch (SVNException e) {
         // If googlecode craps out like it often does, just sleep a minute and
         // pick up where we left off.
